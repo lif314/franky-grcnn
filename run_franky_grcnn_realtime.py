@@ -30,7 +30,7 @@ R_cam2gripper_avg = np.array([
 t_cam2gripper_avg = np.array([[0.05895725], [-0.02991709], [-0.03509327]])
 
 # EE 坐标系下的 Tool 偏移
-TOOL_IN_EE = np.array([-0.010, -0.000, 0.095])
+TOOL_IN_EE = np.array([-0.010, -0.000, 0.105])
 # Home
 JOINT_POSITION_START = np.array([0. , -0.78539816,  0. , -2.35619449,  0. , 1.57079633,  0.78539816])
 # Box
@@ -146,15 +146,20 @@ if __name__ == '__main__':
                 # -----------------------------
                 # 处理角度：图像 -> 相机 -> EE -> Base
                 # -----------------------------
-                # 抓取角度（图像坐标系：u 向右，v 向下，正角逆时针）
-                pred_angle = target_grasp.angle +  np.pi
-                # 转到相机坐标系下（Y 轴取反 => 角度需要加负号）
+                # === 角度归一化到 (-pi, pi] ===
+                pred_angle = (target_grasp.angle - np.pi / 2 + np.pi) % (2 * np.pi) - np.pi
+
+                # === 转到相机坐标系下 ===
                 Rz_cam = R.from_euler("z", pred_angle).as_matrix()
-                # 相机 -> EE -> Base
+                # === 相机 -> EE -> Base ===
                 R_target_ee = R_cam2gripper_avg @ Rz_cam
                 R_target_base = R_ee_base @ R_target_ee
-                q_target_base = R.from_matrix(R_target_base).as_quat()
 
+                # === 保证 z 轴朝上，消除180度二义性 ===
+                if R_target_base[2, 2] < 0:
+                    R_target_base = R_target_base @ R.from_euler("z", 180, degrees=True).as_matrix()
+
+                q_target_base = R.from_matrix(R_target_base).as_quat()
 
                 # 构造 Base 下目标位姿
                 target_pose_base = Affine(ee_target_in_base, q_target_base)
